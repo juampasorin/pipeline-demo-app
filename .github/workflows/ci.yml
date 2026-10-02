@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Fails the build on real errors (syntax, undefined names), but only
+      # warns on style issues — keeps the gate meaningful without being
+      # pedantic about things like line length.
+      - name: Lint with flake8
+        run: |
+          flake8 app tests --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 app tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  # Validates the Dockerfile actually builds, without pushing anywhere.
+  # Catches a broken Dockerfile on every PR, before it ever reaches main.
+  docker-build-check:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image (no push)
+        run: docker build -t pipeline-demo-app:ci-check .
